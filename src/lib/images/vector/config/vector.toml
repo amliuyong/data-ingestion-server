@@ -1,0 +1,23 @@
+[sources.nginx_http_post]
+type = "http_server"
+address = "0.0.0.0:8685"
+strict_path = false
+headers = [ "X_URI", "X_UA", "X_IP", "X_DATE", "X_REQ_ID", "X_METHOD"]
+query_parameters = [ "platform", "appId", "compression" ]
+method = "POST"
+encoding = "binary"
+
+[transforms.json_parser]
+inputs = ["nginx_http_post"]
+type   = "remap"
+source = '''
+.date = del(.X_DATE)
+.uri = del(.X_URI)
+.ua = del(.X_UA)
+.ip = del(.X_IP)
+.rid = del(.X_REQ_ID)
+.method = del(.X_METHOD)
+.data = del(.message)
+'''
+
+

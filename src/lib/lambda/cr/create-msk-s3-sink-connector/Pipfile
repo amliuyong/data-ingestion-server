@@ -1,0 +1,5 @@
+[packages]
+wget = "3.2"
+
+[dev-packages]
+pytest = "*"

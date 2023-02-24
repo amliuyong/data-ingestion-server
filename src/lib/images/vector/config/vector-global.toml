@@ -1,0 +1,18 @@
+data_dir = "/var/lib/vector/%%TASK_ID%%"
+timezone = "UTC"
+healthchecks.enabled = true
+acknowledgements.enabled = false
+
+[api]
+enabled = true
+address = "0.0.0.0:8686"
+
+[sources.vector_logs]
+type = "internal_logs"
+
+[sinks.vector_logs_file]
+type         = "file"
+inputs = [ "vector_logs" ]
+compression = "none"
+path = "/var/lib/vector/%%TASK_ID%%/vector-%Y-%m-%d.log"
+encoding.codec = "text"

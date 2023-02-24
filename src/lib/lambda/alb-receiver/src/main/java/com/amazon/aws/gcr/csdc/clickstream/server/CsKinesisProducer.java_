@@ -1,0 +1,116 @@
+package com.amazon.aws.gcr.csdc.clickstream.server;
+
+
+import com.amazonaws.services.kinesis.producer.Attempt;
+import com.amazonaws.services.kinesis.producer.KinesisProducer;
+import com.amazonaws.services.kinesis.producer.KinesisProducerConfiguration;
+import com.amazonaws.services.kinesis.producer.UserRecordResult;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.MoreExecutors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.regions.Region;
+
+import java.nio.ByteBuffer;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+
+public class CsKinesisProducer implements MessageProducer {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CsKinesisProducer.class);
+
+    private final String streamName;
+    private final Region region;
+    private KinesisProducer producer;
+
+    public CsKinesisProducer(String streamName, String regionName) {
+        LOGGER.info("streamName: {}, regionName: {}", streamName, regionName);
+        this.streamName = streamName;
+        this.region = Region.of(regionName);
+        createKinesisProducer();
+    }
+
+    private void createKinesisProducer() {
+        var producerConfig = new KinesisProducerConfiguration()
+                .setRegion(this.region.toString());
+        this.producer = new KinesisProducer(producerConfig);
+    }
+
+    public void close() {
+        this.producer.flushSync();
+    }
+
+    private void send(Message m, boolean sync) throws ExecutionException, InterruptedException {
+        LOGGER.info("send {}, sync: {}", m.getRid(), sync);
+        byte[] bytes = Utils.toJsonAsBytes(m);
+        if (bytes == null) {
+            LOGGER.warn("Could not get JSON bytes for message");
+            return;
+        }
+        List<Future<UserRecordResult>> putFutures = new LinkedList<>();
+        var data = ByteBuffer.wrap(bytes);
+        ListenableFuture<UserRecordResult> future = producer.addUserRecord(
+                streamName,
+                m.getRid(),
+                data
+        );
+        var callBack = new FutureCallback<UserRecordResult>() {
+            @Override
+            public void onFailure(Throwable t) {
+                LOGGER.error("Failed to produce batch", t);
+            }
+
+            @Override
+            public void onSuccess(UserRecordResult result) {
+                LOGGER.debug(String.format("Produced User Record to shard %s at position %s",
+                        result.getShardId(),
+                        result.getSequenceNumber()));
+            }
+        };
+        Futures.addCallback(future, callBack, MoreExecutors.directExecutor());
+
+        putFutures.add(future);
+
+        if (sync) {
+            // Wait for puts to finish and check the results
+            for (Future<UserRecordResult> f : putFutures) {
+                UserRecordResult result = f.get(); // this does block
+                if (result.isSuccessful()) {
+                    LOGGER.debug("Put record into shard {}", result.getShardId());
+                } else {
+                    for (Attempt attempt : result.getAttempts()) {
+                        // Analyze and respond to the failure
+                        LOGGER.error("Error: {}, {}", attempt.getErrorCode(), attempt.getErrorMessage());
+                    }
+                }
+            }
+        }
+    }
+
+    @Override
+    public void sendAsync(Message m) {
+        try {
+            this.send(m, false);
+        } catch (ExecutionException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void sendSync(Message m) {
+        try {
+            this.send(m, true);
+        } catch (ExecutionException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public String getName() {
+        return "kinesisProducer";
+    }
+}

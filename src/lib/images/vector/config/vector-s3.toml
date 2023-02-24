@@ -1,0 +1,13 @@
+[sinks.s3_archives]
+inputs          = ["json_parser"]    
+#inputs          = ["nginx_logs"] 
+type            = "aws_s3"
+region          = "%%AWS_REGION%%"
+bucket          = "%%AWS_S3_BUCKET%%"
+key_prefix      = "%%AWS_S3_PREFIX%%"      # daily partitions, hive friendly format
+compression     = "gzip"               # compress final objects
+framing.method  = "newline_delimited"  # new line delimited...
+encoding.codec  = "json"               # ...JSON
+batch.max_bytes = 20_000_000             # 20mb uncompressed
+batch.timeout_secs = 300   
+acknowledgements.enabled = false
