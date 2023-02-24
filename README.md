@@ -1,4 +1,4 @@
-# AWS ClickStream solution - Server Ingestion
+# Data Ingestion Server 
 
 ## Architecture
 
